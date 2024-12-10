@@ -17,7 +17,6 @@ from .tensor_functions import Function, rand, tensor
 # - maxpool2d: Tiled max pooling 2D
 # - dropout: Dropout positions based on random noise, include an argument to turn off
 
-
 def tile(input: Tensor, kernel: Tuple[int, int]) -> Tuple[Tensor, int, int]:
     """Reshape an image tensor for 2D pooling
 
@@ -33,10 +32,9 @@ def tile(input: Tensor, kernel: Tuple[int, int]) -> Tuple[Tensor, int, int]:
     """
     batch, channel, height, width = input.shape
     kh, kw = kernel
-    assert height % kh == 0
-    assert width % kw == 0
-    
-    # TODO: Implement for Task 4.3.
+    assert height % kh == 0, "Height must be divisible by kernel height."
+    assert width % kw == 0, "Width must be divisible by kernel width."
+
     new_height = height // kh
     new_width = width // kw
 
@@ -47,8 +45,6 @@ def tile(input: Tensor, kernel: Tuple[int, int]) -> Tuple[Tensor, int, int]:
 
     return tiled, new_height, new_width
 
-
-# TODO: Implement for Task 4.3.
 def max(input: Tensor, axis: int) -> Tensor:
     """Compute the max along a specified axis.
 
@@ -62,8 +58,7 @@ def max(input: Tensor, axis: int) -> Tensor:
         Tensor containing the max values along the specified axis.
 
     """
-    max_values = input.max(axis=axis, keepdims=True)
-    return max_values.squeeze(axis)
+    return input.max(axis=axis, keepdims=False)
 
 def softmax(input: Tensor, axis: int) -> Tensor:
     """Compute the softmax function.
@@ -78,8 +73,8 @@ def softmax(input: Tensor, axis: int) -> Tensor:
         Tensor containing the softmax values.
 
     """
-    exp_values = (input - input.max(axis, keepdims=True)).exp()
-    return exp_values / exp_values.sum(axis, keepdims=True)
+    exp_values = (input - input.max(axis=axis, keepdims=True)).exp()
+    return exp_values / exp_values.sum(axis=axis, keepdims=True)
 
 def logsoftmax(input: Tensor, axis: int) -> Tensor:
     """Compute the log of the softmax function.
@@ -94,8 +89,8 @@ def logsoftmax(input: Tensor, axis: int) -> Tensor:
         Tensor containing the logsoftmax values.
 
     """
-    max_values = input.max(axis, keepdims=True)
-    log_sum_exp = (input - max_values).exp().sum(axis, keepdims=True).log()
+    max_values = input.max(axis=axis, keepdims=True)
+    log_sum_exp = (input - max_values).exp().sum(axis=axis, keepdims=True).log()
     return input - max_values - log_sum_exp
 
 def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
