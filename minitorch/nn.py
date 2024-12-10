@@ -68,7 +68,15 @@ class Max(Function):
     def forward(ctx: Context, t1: Tensor, dim: Tensor) -> Tensor:
         d = int(dim.item())
         ctx.save_for_backward(t1, d)
-        return max_reduce(t1, d)
+        out = max_reduce(t1, d)
+        
+        # Now explicitly remove the reduced dimension
+        shape = list(t1.shape)
+        shape.pop(d)  # Remove the dimension 'd' from the shape
+        out = out.view(*shape)  # Reshape out to remove the reduced dimension
+        
+        return out
+
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, float]:
