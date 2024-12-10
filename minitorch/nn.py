@@ -35,8 +35,85 @@ def tile(input: Tensor, kernel: Tuple[int, int]) -> Tuple[Tensor, int, int]:
     kh, kw = kernel
     assert height % kh == 0
     assert width % kw == 0
+    
     # TODO: Implement for Task 4.3.
-    raise NotImplementedError("Need to implement for Task 4.3")
+    new_height = height // kh
+    new_width = width // kw
+
+    # Reshape the tensor to extract pooling regions
+    reshaped = input.view(batch, channel, new_height, kh, new_width, kw)
+    permuted = reshaped.permute(0, 1, 2, 4, 3, 5)
+    tiled = permuted.contiguous().view(batch, channel, new_height, new_width, kh * kw)
+
+    return tiled, new_height, new_width
 
 
 # TODO: Implement for Task 4.3.
+def max(input: Tensor, axis: int) -> Tensor:
+    """Compute the max along a specified axis.
+
+    Args:
+    ----
+        input: Input tensor.
+        axis: Axis along which to compute the max.
+
+    Returns:
+    -------
+        Tensor containing the max values along the specified axis.
+
+    """
+    max_values = input.max(axis=axis, keepdims=True)
+    return max_values.squeeze(axis)
+
+def softmax(input: Tensor, axis: int) -> Tensor:
+    """Compute the softmax function.
+
+    Args:
+    ----
+        input: Input tensor.
+        axis: Axis along which to compute the softmax.
+
+    Returns:
+    -------
+        Tensor containing the softmax values.
+
+    """
+    exp_values = (input - input.max(axis, keepdims=True)).exp()
+    return exp_values / exp_values.sum(axis, keepdims=True)
+
+def logsoftmax(input: Tensor, axis: int) -> Tensor:
+    """Compute the log of the softmax function.
+
+    Args:
+    ----
+        input: Input tensor.
+        axis: Axis along which to compute the logsoftmax.
+
+    Returns:
+    -------
+        Tensor containing the logsoftmax values.
+
+    """
+    max_values = input.max(axis, keepdims=True)
+    log_sum_exp = (input - max_values).exp().sum(axis, keepdims=True).log()
+    return input - max_values - log_sum_exp
+
+def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
+    """Apply dropout to the input tensor.
+
+    Args:
+    ----
+        input: Input tensor.
+        p: Probability of dropping a unit.
+        training: Whether to apply dropout (default: True).
+
+    Returns:
+    -------
+        Tensor with dropout applied during training or unchanged during evaluation.
+
+    """
+    if not training:
+        return input
+
+    mask = rand(input.shape) > p
+    return input * mask / (1.0 - p)
