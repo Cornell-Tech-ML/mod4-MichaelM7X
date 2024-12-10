@@ -6,30 +6,22 @@ from .fast_ops import FastOps
 from .tensor import Tensor
 from .tensor_functions import Function, rand, tensor
 
-
-# List of functions in this file:
-# - avgpool2d: Tiled average pooling 2D
-# - argmax: Compute the argmax as a 1-hot tensor
-# - Max: New Function for max operator
-# - max: Apply max reduction
-# - softmax: Compute the softmax as a tensor
-# - logsoftmax: Compute the log of the softmax as a tensor - See https://en.wikipedia.org/wiki/LogSumExp#log-sum-exp_trick_for_log-domain_calculations
-# - maxpool2d: Tiled max pooling 2D
-# - dropout: Dropout positions based on random noise, include an argument to turn off
+# Reduce operation for max provided by FastOps.
+max_reduce = FastOps.reduce(operators.max, -float("inf"))
 
 def tile(input: Tensor, kernel: Tuple[int, int]) -> Tuple[Tensor, int, int]:
     """Reshape an image tensor for 2D pooling
 
     Args:
-    ----
         input: batch x channel x height x width
-        kernel: height x width of pooling
+        kernel: (kernel_height, kernel_width) of pooling
 
     Returns:
-    -------
-        Tensor of size batch x channel x new_height x new_width x (kernel_height * kernel_width) as well as the new_height and new_width value.
-
+        Tensor of size (batch x channel x new_height x new_width x kernel_height*kernel_width),
+        along with new_height and new_width.
     """
+    input = input.contiguous()  # Ensure input is contiguous before view
+
     batch, channel, height, width = input.shape
     kh, kw = kernel
     assert height % kh == 0, "Height must be divisible by kernel height."
@@ -39,76 +31,93 @@ def tile(input: Tensor, kernel: Tuple[int, int]) -> Tuple[Tensor, int, int]:
     new_width = width // kw
 
     # Reshape the tensor to extract pooling regions
+    # shape: (batch, channel, new_height, kh, new_width, kw)
     reshaped = input.view(batch, channel, new_height, kh, new_width, kw)
+    # permute to (batch, channel, new_height, new_width, kh, kw)
     permuted = reshaped.permute(0, 1, 2, 4, 3, 5)
+    # flatten kh * kw dimension
     tiled = permuted.contiguous().view(batch, channel, new_height, new_width, kh * kw)
 
     return tiled, new_height, new_width
 
-def max(input: Tensor, axis: int) -> Tensor:
-    """Compute the max along a specified axis.
+def avgpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
+    """Perform 2D average pooling using the tile function.
 
     Args:
-    ----
-        input: Input tensor.
-        axis: Axis along which to compute the max.
+        input: Tensor (batch, channel, height, width)
+        kernel: (kernel_height, kernel_width)
 
     Returns:
-    -------
-        Tensor containing the max values along the specified axis.
-
+        (batch, channel, new_height, new_width) after average pooling.
     """
-    return input.max(axis=axis, keepdims=False)
+    batch, channel, _, _ = input.shape
+    tiled, new_height, new_width = tile(input, kernel)
+    # mean over the last dimension (kernel)
+    return tiled.mean(dim=4).view(batch, channel, new_height, new_width)
 
-def softmax(input: Tensor, axis: int) -> Tensor:
-    """Compute the softmax function.
+def argmax(input: Tensor, dim: int) -> Tensor:
+    """Compute the argmax of the input tensor along a specified dimension as a 1-hot tensor."""
+    max_vals = max_reduce(input, dim)
+    shape = list(input.shape)
+    shape[dim] = 1
+    max_vals = max_vals.view(*shape)
+    return (input == max_vals)
 
-    Args:
-    ----
-        input: Input tensor.
-        axis: Axis along which to compute the softmax.
+class Max(Function):
+    @staticmethod
+    def forward(ctx: Context, t1: Tensor, dim: Tensor) -> Tensor:
+        d = int(dim.item())
+        ctx.save_for_backward(t1, d)
+        return max_reduce(t1, d)
 
-    Returns:
-    -------
-        Tensor containing the softmax values.
+    @staticmethod
+    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, float]:
+        t1, d = ctx.saved_values
+        grad_input = argmax(t1, d) * grad_output
+        return grad_input, 0.0
 
-    """
-    exp_values = (input - input.max(axis=axis, keepdims=True)).exp()
-    return exp_values / exp_values.sum(axis=axis, keepdims=True)
+def max(input: Tensor, dim: int) -> Tensor:
+    """Compute the maximum value of the input tensor along a specified dimension."""
+    dim_tensor = tensor([dim], requires_grad=False)
+    return Max.apply(input, dim_tensor)
 
-def logsoftmax(input: Tensor, axis: int) -> Tensor:
-    """Compute the log of the softmax function.
+def softmax(input: Tensor, dim: int) -> Tensor:
+    """Compute the softmax along a specified dimension."""
+    max_vals = max(input, dim)
+    max_shape = list(input.shape)
+    max_shape[dim] = 1
+    max_vals = max_vals.view(*max_shape)
+    exp_values = (input - max_vals).exp()
+    sum_exp = exp_values.sum(dim=dim)
+    sum_exp = sum_exp.view(*max_shape)
+    return exp_values / sum_exp
 
-    Args:
-    ----
-        input: Input tensor.
-        axis: Axis along which to compute the logsoftmax.
+def logsoftmax(input: Tensor, dim: int) -> Tensor:
+    """Compute the log-softmax along a specified dimension."""
+    max_vals = max(input, dim)
+    max_shape = list(input.shape)
+    max_shape[dim] = 1
+    max_vals = max_vals.view(*max_shape)
 
-    Returns:
-    -------
-        Tensor containing the logsoftmax values.
+    log_sum_exp = (input - max_vals).exp().sum(dim=dim).log()
+    log_sum_exp = log_sum_exp.view(*max_shape)
+    return input - max_vals - log_sum_exp
 
-    """
-    max_values = input.max(axis=axis, keepdims=True)
-    log_sum_exp = (input - max_values).exp().sum(axis=axis, keepdims=True).log()
-    return input - max_values - log_sum_exp
+def maxpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
+    """Perform 2D max pooling."""
+    batch, channel, _, _ = input.shape
+    tiled, new_height, new_width = tile(input, kernel)
+    max_pooled = max(tiled, 4)
+    return max_pooled.view(batch, channel, new_height, new_width)
 
-def dropout(input: Tensor, p: float = 0.5, training: bool = True) -> Tensor:
-    """Apply dropout to the input tensor.
-
-    Args:
-    ----
-        input: Input tensor.
-        p: Probability of dropping a unit.
-        training: Whether to apply dropout (default: True).
-
-    Returns:
-    -------
-        Tensor with dropout applied during training or unchanged during evaluation.
-
-    """
-    if not training:
+def dropout(input: Tensor, prob: float = 0.5, ignore: bool = False) -> Tensor:
+    """Apply dropout to the input tensor."""
+    if ignore:
+        return input
+    if prob == 1.0:
+        return input * 0.0
+    if prob == 0.0:
         return input
 
-    mask = rand(input.shape) > p
-    return input * mask / (1.0 - p)
+    mask = rand(input.shape) > prob
+    return input * mask / (1.0 - prob)
