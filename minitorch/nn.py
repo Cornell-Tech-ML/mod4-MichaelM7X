@@ -115,7 +115,19 @@ class Max(Function):
 
         """
         t1, d = ctx.saved_values
+        original_shape = list(t1.shape)
+        
+        # Insert a 1 dimension at 'd' to match original shape except at dimension d
+        grad_output = grad_output.view(*original_shape[:d], 1, *original_shape[d+1:])
+        
+        # Trigger broadcasting by arithmetic with a zeros tensor of t1's shape
+        # minitorch arithmetic supports broadcasting, so adding zeros with shape of t1
+        # will broadcast grad_output to match t1.
+        zeros_for_broadcast = t1.zeros(t1.shape)
+        grad_output = grad_output + zeros_for_broadcast
+
         grad_input = argmax(t1, d) * grad_output
+
         return grad_input, 0.0
 
 

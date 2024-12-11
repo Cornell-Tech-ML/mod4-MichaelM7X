@@ -2,7 +2,7 @@ from mnist import MNIST
 
 import minitorch
 
-mndata = MNIST("project/data/")
+mndata = MNIST("data/")
 images, labels = mndata.load_training()
 
 BACKEND = minitorch.TensorBackend(minitorch.FastOps)
@@ -42,7 +42,7 @@ class Conv2d(minitorch.Module):
 
     def forward(self, input):
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        return minitorch.conv2d(input, self.weights.value) + self.bias.value
 
 
 class Network(minitorch.Module):
@@ -68,11 +68,22 @@ class Network(minitorch.Module):
         self.out = None
 
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        self.layer1 = Conv2d(1, 4, 3, 3)
+        self.layer2 = Conv2d(4, 8, 3, 3)
+        self.layer3 = Linear(392, 64)
+        self.layer4 = Linear(64, C)
 
     def forward(self, x):
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        self.mid = self.layer1.forward(x).relu()
+        self.out = self.layer2.forward(self.mid).relu()
+        h = minitorch.nn.maxpool2d(self.out, (4, 4))
+        h = h.view(BATCH, 392)
+
+        h = self.layer3.forward(h).relu()
+        h = minitorch.nn.dropout(h, 0.25, not self.training)
+        h = self.layer4.forward(h)
+        return minitorch.nn.logsoftmax(h, 1)
 
 
 def make_mnist(start, stop):

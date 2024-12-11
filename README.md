@@ -6,6 +6,14 @@
 
 * Overview: https://minitorch.github.io/module4.html
 
+## Sentiment classification (SST2)
+Training Log: [SST2](./assets/sentiment.txt)
+
+## Digit classification (MNIST)
+Training Log: [MNIST](./assets/mnist.txt)
+
+
+
 This module requires `fast_ops.py`, `cuda_ops.py`, `scalar.py`, `tensor_functions.py`, `tensor_data.py`, `tensor_ops.py`, `operators.py`, `module.py`, and `autodiff.py` from Module 3.
 
 
