@@ -1,14 +1,11 @@
 from typing import Tuple, TypeVar, Any
 
-import numpy as np
 from numba import prange
 from numba import njit as _njit
 
 from .autodiff import Context
 from .tensor import Tensor
 from .tensor_data import (
-    MAX_DIMS,
-    Index,
     Shape,
     Strides,
     Storage,
@@ -22,6 +19,7 @@ Fn = TypeVar("Fn")
 
 
 def njit(fn: Fn, **kwargs: Any) -> Fn:
+    """Wrapper for numba njit decorator that ensures inline optimization."""
     return _njit(inline="always", **kwargs)(fn)  # type: ignore
 
 
@@ -91,7 +89,24 @@ def _tensor_conv1d(
     s2 = weight_strides
 
     # TODO: Implement for Task 4.1.
-    raise NotImplementedError("Need to implement for Task 4.1")
+    for b in prange(batch_):
+        for oc in range(out_channels):
+            for w in range(out_width):
+                value = 0.0
+                for ic in range(in_channels):
+                    for k in range(kw):
+                        if reverse:
+                            in_w = w - kw + 1 + k
+                        else:
+                            in_w = w + k
+
+                        if 0 <= in_w < width:
+                            input_idx = b * s1[0] + ic * s1[1] + in_w * s1[2]
+                            weight_idx = oc * s2[0] + ic * s2[1] + k * s2[2]
+                            value += input[input_idx] * weight[weight_idx]
+
+                out_idx = b * out_strides[0] + oc * out_strides[1] + w * out_strides[2]
+                out[out_idx] = value
 
 
 tensor_conv1d = njit(_tensor_conv1d, parallel=True)
@@ -127,6 +142,18 @@ class Conv1dFun(Function):
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
+        """Compute the gradient of 1D convolution.
+
+        Args:
+        ----
+            ctx: Context containing saved tensors
+            grad_output: Gradient of the output
+
+        Returns:
+        -------
+            Tuple of gradients for input and weight
+
+        """
         input, weight = ctx.saved_values
         batch, in_channels, w = input.shape
         out_channels, in_channels, kw = weight.shape
@@ -220,7 +247,40 @@ def _tensor_conv2d(
     s20, s21, s22, s23 = s2[0], s2[1], s2[2], s2[3]
 
     # TODO: Implement for Task 4.2.
-    raise NotImplementedError("Need to implement for Task 4.2")
+    for b in prange(batch_):
+        for oc in range(out_channels):
+            for h in range(out_shape[2]):
+                for w_ in range(out_shape[3]):
+                    value = 0.0
+                    for ic in range(in_channels):
+                        for kh_idx in range(kh):
+                            for kw_idx in range(kw):
+                                if reverse:
+                                    in_h = h - kh + 1 + kh_idx
+                                    in_w = w_ - kw + 1 + kw_idx
+                                else:
+                                    in_h = h + kh_idx
+                                    in_w = w_ + kw_idx
+
+                                if 0 <= in_h < height and 0 <= in_w < width:
+                                    input_idx = (
+                                        b * s10 + ic * s11 + in_h * s12 + in_w * s13
+                                    )
+                                    weight_idx = (
+                                        oc * s20
+                                        + ic * s21
+                                        + kh_idx * s22
+                                        + kw_idx * s23
+                                    )
+                                    value += input[input_idx] * weight[weight_idx]
+
+                    out_idx = (
+                        b * out_strides[0]
+                        + oc * out_strides[1]
+                        + h * out_strides[2]
+                        + w_ * out_strides[3]
+                    )
+                    out[out_idx] = value
 
 
 tensor_conv2d = njit(_tensor_conv2d, parallel=True, fastmath=True)
@@ -254,6 +314,18 @@ class Conv2dFun(Function):
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
+        """Compute the gradient of 2D convolution.
+
+        Args:
+        ----
+            ctx: Context containing saved tensors
+            grad_output: Gradient of the output
+
+        Returns:
+        -------
+            Tuple of gradients for input and weight
+
+        """
         input, weight = ctx.saved_values
         batch, in_channels, h, w = input.shape
         out_channels, in_channels, kh, kw = weight.shape

@@ -1,3 +1,7 @@
+"""The minitorch package provides a minimal, educational deep learning framework
+with autodifferentiation, tensors, and convolution operators.
+"""
+
 from .testing import MathTest, MathTestVariable  # type: ignore # noqa: F401,F403
 from .datasets import *  # noqa: F401,F403
 from .optim import *  # noqa: F401,F403
