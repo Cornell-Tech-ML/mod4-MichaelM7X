@@ -53,6 +53,7 @@ def test_max(t: Tensor) -> None:
             expected = max([t[i, j, v] for v in range(t.shape[2])])
             assert_close(out[i, j], expected)
 
+
 @pytest.mark.task4_4
 @given(tensors(shape=(1, 1, 4, 4)))
 def test_max_pool(t: Tensor) -> None:
